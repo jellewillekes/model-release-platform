@@ -1,0 +1,126 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/mlflow || true &&
+      mc anonymous set download local/mlflow || true &&
+      echo 'MinIO bucket ready: s3://mlflow' "
+    restart: "no"
+
+  mlflow-server:
+    build:
+      context: ./mlflow_server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_HOST: 0.0.0.0
+      MLFLOW_PORT: 5000
+      BACKEND_STORE_URI: postgresql://mlflow:mlflow@postgres:5432/mlflow
+      ARTIFACT_ROOT: s3://mlflow/
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    ports:
+      - "5050:5000"
+
+  pipeline:
+    build:
+      context: ./project
+    depends_on:
+      mlflow-server:
+        condition: service_started
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MODEL_NAME: breast_cancer_clf
+      EXPERIMENT_NAME: breast-cancer-platform
+    command: ["python", "-m", "src.orchestrate"]
+
+  promote:
+    build:
+      context: ./project
+    depends_on:
+      mlflow-server:
+        condition: service_started
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MODEL_NAME: breast_cancer_clf
+    command: ["python", "-m", "src.promote"]
+
+  serving:
+    build:
+      context: ./serving
+    depends_on:
+      mlflow-server:
+        condition: service_started
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MODEL_NAME: breast_cancer_clf
+    ports:
+      - "8000:8000"
+
+  smoke:
+    build:
+      context: ./serving
+    depends_on:
+      serving:
+        condition: service_started
+    environment:
+      SERVE_URL: http://serving:8000
+    command: ["python", "smoke_test.py"]
+
+volumes:
+  pgdata:
+  miniodata:
