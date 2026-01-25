@@ -1,38 +1,47 @@
 Model Release Platform
 
-This repository implements a production-style model release platform
-that manages the full lifecycle of machine learning models:
+This repository implements a production-style model release platform that manages the full lifecycle of machine learning models:
 
--   Training
--   Evaluation
--   Quality gating
--   Registration
--   Promotion
--   Serving
--   Verification
+- Training
+- Evaluation
+- Quality gating
+- Registration
+- Promotion (alias-based)
+- Serving
+- Verification
 
-The system is designed around a release discipline,
-reproducibility, and artifact lineage.
+The system is designed around release discipline, reproducibility, and artifact lineage.
 
 ------------------------------------------------------------------------
 
 System Guarantees
 
-The platform enforces the following guarantees:
+- Reproducible training — every run is tracked, versioned, and immutable.
+- Quality-gated releases — models are only registered if evaluation criteria are met.
+- Alias-based promotion workflow — models move through aliases rather than deprecated “stages”.
+- Rollback metadata — promotions record the previous production version via model version tags.
+- Artifact lineage — every model version links back to the source run id and metadata.
+- Serving separate from training — online inference loads only from the registry.
+- End-to-end automation — the entire lifecycle is executable via Make targets.
+- Verifiable production — smoke tests validate live deployments.
 
--   Reproducible training — every run is tracked, versioned, and
-    immutable.
--   Quality-gated releases — models are only registered if evaluation
-    criteria are met.
--   Explicit promotion workflow — models move through Staging →
-    Production.
--   Rollback safety — previous Production versions are preserved.
--   Artifact lineage — every model version links back to data, code, and
-    metrics.
--   Serving seperate from training — online inference loads only from
-    the registry.
--   End-to-end automation — the entire lifecycle is executable via CLI
--   Verifiable production — smoke tests validate live deployments
+------------------------------------------------------------------------
+
+Release Model (No Stages)
+
+We do NOT use MLflow stages (“Staging”/“Production”). Instead we use:
+
+Aliases (pointers):
+- candidate: most recently registered + gated model version
+- prod: version currently served by the inference API
+- champion: synonym for prod (current best / current production)
+
+Model version tags (metadata):
+- release_status: candidate | prod | champion | previous_prod
+- source_run_id: originating MLflow run id
+- gate: passed | failed
+- previous_prod_version: (optional) version that prod used to point to
+- promoted_from_alias: candidate
 
 ------------------------------------------------------------------------
 
@@ -55,26 +64,26 @@ Architecture
     └─────┬──────┘
           │
     ┌─────▼──────┐
-    │ Register   │───► registers to Staging
+    │ Register   │───► registers model version + sets alias "candidate"
     └─────┬──────┘
           │
     ┌─────▼──────┐
-    │ Promote    │───► Staging → Production
+    │ Promote    │───► moves alias "prod" (and "champion") to chosen version
     └────────────┘
 
     Serving:
-    Model Registry → Inference API → Clients
+    Model Registry (models:/name@prod) → Inference API → Clients
 
 ------------------------------------------------------------------------
 
 Technology Stack
 
--   MLflow (experiment tracking + model registry)
--   PostgreSQL (metadata store)
--   MinIO (artifact store)
--   FastAPI (online inference)
--   Docker Compose (infrastructure orchestration)
--   Makefile (workflow automation)
+- MLflow (experiment tracking + model registry)
+- PostgreSQL (metadata store)
+- MinIO (artifact store)
+- FastAPI (online inference)
+- Docker Compose (infrastructure)
+- Makefile (workflow automation)
 
 ------------------------------------------------------------------------
 
@@ -83,84 +92,35 @@ Repository Structure
     .
     ├── docker-compose.yml
     ├── Makefile
-    ├── src/
-    │   ├── orchestrate.py
-    │   ├── ingest.py
-    │   ├── featurize.py
-    │   ├── train.py
-    │   ├── evaluate.py
-    │   ├── register.py
-    │   └── promote.py
+    ├── project/
+    │   └── src/              # pipeline steps + orchestration
     ├── serving/
-    │   └── app.py
-    └── smoke_test.py
+    │   └── app.py            # FastAPI inference
+    └── smoke_test.py         # deployment verification
 
 ------------------------------------------------------------------------
 
 Operating the System
 
-Start infrastructure
+Start infrastructure:
 
     make up
 
--   MLflow UI: http://localhost:5050
--   MinIO Console: http://localhost:9001
+- MLflow UI: http://localhost:5050
+- MinIO Console: http://localhost:9001
 
-------------------------------------------------------------------------
-
-Run full pipeline (train → evaluate → register)
+Run full pipeline (train → evaluate → register):
 
     make run-pipeline
 
-------------------------------------------------------------------------
-
-Promote model to Production
+Promote candidate to production (alias-based):
 
     make promote
 
-------------------------------------------------------------------------
-
-Start inference service
+Start inference service:
 
     make serve
 
-------------------------------------------------------------------------
-
-Verify deployment
+Verify deployment:
 
     make smoke-test
-
-------------------------------------------------------------------------
-
-Release Policy
-
--   A model is only registered if it passes evaluation thresholds.
--   A model is only promoted via an explicit promotion command.
--   The registry is the single source of truth for serving.
--   Serving never loads models from training outputs directly.
-
-------------------------------------------------------------------------
-
-Design Principles
-
--   Immutable artifacts
--   Registry-driven deployment
--   Promotion instead of overwrite
--   Explicit release steps
--   Full traceability
--   Automation-first operation
-
-------------------------------------------------------------------------
-
-Planned Extensions
-
--   Canary deployments
--   Shadow deployments
--   CI-based quality gates
--   Dataset fingerprinting
--   Drift detection
--   Alias-based releases
--   Automated rollback policies
-
-------------------------------------------------------------------------
-

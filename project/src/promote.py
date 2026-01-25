@@ -1,40 +1,48 @@
+from __future__ import annotations
+
 import os
+from typing import Optional
+
 from mlflow.tracking import MlflowClient
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "breast_cancer_clf")
 
 
-def get_alias_version(client: MlflowClient, name: str, alias: str):
+def get_alias_version(client: MlflowClient, name: str, alias: str) -> Optional[str]:
     try:
         mv = client.get_model_version_by_alias(name, alias)
-        return mv.version
+        return str(mv.version)
     except Exception:
         return None
 
 
-def main():
+def main() -> None:
     client = MlflowClient()
 
-    # Read candidate
     candidate_version = get_alias_version(client, MODEL_NAME, "candidate")
     if not candidate_version:
         raise RuntimeError(f"No alias 'candidate' found for model: {MODEL_NAME}")
 
-    # Read current prod (if any)
     current_prod = get_alias_version(client, MODEL_NAME, "prod")
 
-    # Move current prod to champion (for rollback)
-    if current_prod:
-        client.set_registered_model_alias(MODEL_NAME, "champion", current_prod)
-        client.set_model_version_tag(MODEL_NAME, current_prod, "release_status", "champion")
-        print(f"[promote] Set alias 'champion' -> v{current_prod}")
-
-    # Promote candidate to prod
+    # Promote candidate -> prod
     client.set_registered_model_alias(MODEL_NAME, "prod", candidate_version)
     client.set_model_version_tag(MODEL_NAME, candidate_version, "release_status", "prod")
     client.set_model_version_tag(MODEL_NAME, candidate_version, "promoted_from_alias", "candidate")
 
-    print(f"[promote] Promoted {MODEL_NAME} v{candidate_version} -> alias 'prod'")
+    # Champion tracks current production (same as prod)
+    client.set_registered_model_alias(MODEL_NAME, "champion", candidate_version)
+    client.set_model_version_tag(MODEL_NAME, candidate_version, "release_status", "champion")
+
+    # Rollback metadata (tags) – keep info about what prod used to be
+    if current_prod:
+        client.set_model_version_tag(MODEL_NAME, candidate_version, "previous_prod_version", current_prod)
+        client.set_model_version_tag(MODEL_NAME, current_prod, "release_status", "previous_prod")
+        print(f"[promote] previous prod was v{current_prod}")
+
+    print(
+        f"[promote] Promoted {MODEL_NAME} v{candidate_version} -> alias 'prod' (and 'champion')"
+    )
 
 
 if __name__ == "__main__":
