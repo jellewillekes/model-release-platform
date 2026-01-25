@@ -27,17 +27,27 @@ def main() -> None:
 
     # Promote candidate -> prod
     client.set_registered_model_alias(MODEL_NAME, "prod", candidate_version)
-    client.set_model_version_tag(MODEL_NAME, candidate_version, "release_status", "prod")
-    client.set_model_version_tag(MODEL_NAME, candidate_version, "promoted_from_alias", "candidate")
+    client.set_model_version_tag(
+        MODEL_NAME, candidate_version, "release_status", "prod"
+    )
+    client.set_model_version_tag(
+        MODEL_NAME, candidate_version, "promoted_from_alias", "candidate"
+    )
 
     # Champion tracks current production (same as prod)
     client.set_registered_model_alias(MODEL_NAME, "champion", candidate_version)
-    client.set_model_version_tag(MODEL_NAME, candidate_version, "release_status", "champion")
+    client.set_model_version_tag(
+        MODEL_NAME, candidate_version, "release_status", "champion"
+    )
 
     # Rollback metadata (tags) – keep info about what prod used to be
     if current_prod:
-        client.set_model_version_tag(MODEL_NAME, candidate_version, "previous_prod_version", current_prod)
-        client.set_model_version_tag(MODEL_NAME, current_prod, "release_status", "previous_prod")
+        client.set_model_version_tag(
+            MODEL_NAME, candidate_version, "previous_prod_version", current_prod
+        )
+        client.set_model_version_tag(
+            MODEL_NAME, current_prod, "release_status", "previous_prod"
+        )
         print(f"[promote] previous prod was v{current_prod}")
 
     print(

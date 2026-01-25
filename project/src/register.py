@@ -45,7 +45,9 @@ def main() -> None:
     client.set_model_version_tag(model_name, mv.version, "release_status", "candidate")
 
     # Alias-based release: set candidate -> this version
-    client.set_registered_model_alias(name=model_name, alias="candidate", version=mv.version)
+    client.set_registered_model_alias(
+        name=model_name, alias="candidate", version=mv.version
+    )
 
     (ART_DIR / "REGISTERED_VERSION").write_text(str(mv.version))
     print(f"[register] Registered {model_name} v{mv.version} -> alias 'candidate'")

@@ -1,3 +1,5 @@
+[![ci](https://github.com/jellewillekes/model-release-platform/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/jellewillekes/model-release-platform/actions/workflows/ci.yml)
+
 Model Release Platform
 
 This repository implements a production-style model release platform that manages the full lifecycle of machine learning models:

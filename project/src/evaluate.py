@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import joblib
 import mlflow
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import RocCurveDisplay, accuracy_score, f1_score, roc_auc_score
-from sklearn.pipeline import Pipeline
 
 from src.common.config import get_experiment_name
 from src.common.mlflow_utils import ensure_experiment, write_json
 
 DATA_DIR = Path("/app/data")
 ART_DIR = Path("/app/artifacts")
+
 
 def main() -> None:
     ensure_experiment(get_experiment_name())
@@ -28,8 +27,6 @@ def main() -> None:
     # but for this simple pipeline, we'll reload the same pipeline object by using mlflow artifact path.)
     # We'll just re-train-evaluate linkage via parent run in orchestrator.
 
-    # In this step we only compute plots from a model loaded from MLflow run passed via env var.
-    run_id = mlflow.active_run().info.run_id if mlflow.active_run() else None
     # Orchestrator will pass TRAIN_RUN_ID
     train_run_id = Path("/app/artifacts/TRAIN_RUN_ID").read_text().strip()
 
@@ -61,7 +58,9 @@ def main() -> None:
         mlflow.log_metrics(metrics)
         mlflow.log_artifact(str(report_path), artifact_path="reports")
         mlflow.log_artifact(str(fig_path), artifact_path="reports")
-        print(f"[evaluate] run_id={run.info.run_id} train_run_id={train_run_id} metrics={metrics}")
+        print(
+            f"[evaluate] run_id={run.info.run_id} train_run_id={train_run_id} metrics={metrics}"
+        )
 
         # Gate decision (simple): roc_auc >= 0.95
         gate_ok = metrics["eval_roc_auc"] >= 0.95
@@ -69,6 +68,7 @@ def main() -> None:
         gate_path.write_text("true" if gate_ok else "false")
         mlflow.log_artifact(str(gate_path), artifact_path="reports")
         print(f"[evaluate] gate_ok={gate_ok}")
+
 
 if __name__ == "__main__":
     main()

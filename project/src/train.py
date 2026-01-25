@@ -4,7 +4,6 @@ from pathlib import Path
 
 import joblib
 import mlflow
-import numpy as np
 import pandas as pd
 from mlflow.models.signature import infer_signature
 from sklearn.linear_model import LogisticRegression
@@ -16,6 +15,7 @@ from src.common.mlflow_utils import ensure_experiment
 
 DATA_DIR = Path("/app/data")
 ART_DIR = Path("/app/artifacts")
+
 
 def main() -> None:
     ensure_experiment(get_experiment_name())
@@ -40,22 +40,26 @@ def main() -> None:
         random_state=42,
     )
 
-    pipeline = Pipeline(steps=[
-        ("pre", preprocessor),
-        ("clf", clf),
-    ])
+    pipeline = Pipeline(
+        steps=[
+            ("pre", preprocessor),
+            ("clf", clf),
+        ]
+    )
 
     with mlflow.start_run(run_name="train") as run:
         mlflow.set_tag("step", "train")
         mlflow.set_tag("model_name", model_name)
 
-        mlflow.log_params({
-            "model_type": "logreg",
-            "max_iter": 2000,
-            "solver": "lbfgs",
-            "class_weight": "balanced",
-            "random_state": 42,
-        })
+        mlflow.log_params(
+            {
+                "model_type": "logreg",
+                "max_iter": 2000,
+                "solver": "lbfgs",
+                "class_weight": "balanced",
+                "random_state": 42,
+            }
+        )
 
         pipeline.fit(X_train, y_train)
 
@@ -71,7 +75,9 @@ def main() -> None:
 
         # signature & input example
         input_example = X_test.head(5)
-        signature = infer_signature(input_example, pipeline.predict_proba(input_example)[:, 1])
+        signature = infer_signature(
+            input_example, pipeline.predict_proba(input_example)[:, 1]
+        )
 
         # Log model
         mlflow.sklearn.log_model(
@@ -89,6 +95,7 @@ def main() -> None:
 
         print(f"[train] run_id={run.info.run_id}")
         print(f"[train] metrics={metrics}")
+
 
 if __name__ == "__main__":
     main()

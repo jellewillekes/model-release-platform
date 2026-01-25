@@ -6,7 +6,6 @@ import joblib
 import mlflow
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.common.config import get_experiment_name
@@ -15,12 +14,13 @@ from src.common.mlflow_utils import ensure_experiment
 DATA_DIR = Path("/app/data")
 ART_DIR = Path("/app/artifacts")
 
+
 def main() -> None:
     ensure_experiment(get_experiment_name())
     mlflow.set_experiment(get_experiment_name())
 
     train_df = pd.read_csv(DATA_DIR / "train.csv")
-    test_df = pd.read_csv(DATA_DIR / "test.csv")
+    # test_df = pd.read_csv(DATA_DIR / "test.csv")
 
     feature_cols = [c for c in train_df.columns if c != "target"]
 
@@ -43,6 +43,7 @@ def main() -> None:
         mlflow.log_artifact(str(preproc_path), artifact_path="features")
         mlflow.set_tag("step", "featurize")
         print(f"[featurize] run_id={run.info.run_id}")
+
 
 if __name__ == "__main__":
     main()

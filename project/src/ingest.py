@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import mlflow
-import pandas as pd
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
@@ -11,6 +10,7 @@ from src.common.config import get_experiment_name
 from src.common.mlflow_utils import ensure_experiment
 
 DATA_DIR = Path("/app/data")
+
 
 def main() -> None:
     ensure_experiment(get_experiment_name())
@@ -37,6 +37,7 @@ def main() -> None:
         mlflow.log_artifact(str(test_path), artifact_path="data")
         mlflow.set_tag("step", "ingest")
         print(f"[ingest] run_id={run.info.run_id}")
+
 
 if __name__ == "__main__":
     main()

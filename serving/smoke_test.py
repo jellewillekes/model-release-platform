@@ -6,6 +6,7 @@ import requests
 
 SERVE_URL = os.getenv("SERVE_URL", "http://localhost:8000")
 
+
 def main() -> None:
     # Wait a bit for uvicorn
     for _ in range(30):
@@ -64,6 +65,7 @@ def main() -> None:
     p = body["proba"][0]
     assert 0.0 <= p <= 1.0
     print("[smoke] OK:", body)
+
 
 if __name__ == "__main__":
     main()
