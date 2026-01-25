@@ -1,47 +1,52 @@
 from __future__ import annotations
 
 import os
-from typing import Any
-
 import mlflow
-import pandas as pd
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-MODEL_NAME = os.getenv("MODEL_NAME", "breast_cancer_clf")
+MODEL_NAME = os.environ.get("MODEL_NAME", "breast_cancer_clf")
 
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+# Load from alias 'prod' (not stages)
+MODEL_URI = f"models:/{MODEL_NAME}@prod"
 
-app = FastAPI(title="MLflow Production Model Serving")
+app = FastAPI()
+
 
 class PredictRequest(BaseModel):
-    rows: list[dict[str, Any]]
+    # We accept named-feature rows so the DataFrame keeps the correct column names
+    rows: list[dict[str, float]] = Field(..., min_length=1)
 
-def _load_model():
-    # Always serve Production
-    uri = f"models:/{MODEL_NAME}/Production"
-    return mlflow.pyfunc.load_model(uri)
 
-_model = None
+# Load model at startup
+model = mlflow.pyfunc.load_model(MODEL_URI)
+
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "model": MODEL_NAME, "tracking_uri": MLFLOW_TRACKING_URI}
+def health():
+    return {"status": "ok", "model_uri": MODEL_URI}
+
 
 @app.post("/predict")
-def predict(req: PredictRequest) -> dict[str, Any]:
-    global _model
-    if _model is None:
-        _model = _load_model()
+def predict(req: PredictRequest):
+    import pandas as pd
 
-    df = pd.DataFrame(req.rows)
-    proba = _model.predict(df)
-    proba_list = [float(x) for x in proba]
+    # Build DataFrame with correct feature names
+    X = pd.DataFrame(req.rows)
 
-    # best-effort to include version info
+    # Run prediction
+    proba = model.predict(X)
+
+    # Make sure output is JSON-serializable
+    try:
+        # numpy array / pandas series case
+        out0 = float(proba[0])
+    except Exception:
+        # already a Python scalar
+        out0 = proba[0]
+
     return {
         "model_name": MODEL_NAME,
-        "n": len(proba_list),
-        "proba": proba_list,
+        "n": len(req.rows),
+        "proba": [out0],
     }
