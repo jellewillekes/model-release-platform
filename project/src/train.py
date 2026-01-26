@@ -11,6 +11,7 @@ from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 
 from src.common.config import get_experiment_name, get_model_name
+from src.common.dataset_fingerprint import compute_fingerprint, write_fingerprint_json
 from src.common.mlflow_utils import ensure_experiment
 
 DATA_DIR = Path("/app/data")
@@ -22,8 +23,11 @@ def main() -> None:
     mlflow.set_experiment(get_experiment_name())
     model_name = get_model_name()
 
-    train_df = pd.read_csv(DATA_DIR / "train.csv")
-    test_df = pd.read_csv(DATA_DIR / "test.csv")
+    train_path = DATA_DIR / "train.csv"
+    test_path = DATA_DIR / "test.csv"
+
+    train_df = pd.read_csv(train_path)
+    test_df = pd.read_csv(test_path)
 
     X_train = train_df.drop(columns=["target"])
     y_train = train_df["target"].astype(int)
@@ -47,9 +51,25 @@ def main() -> None:
         ]
     )
 
+    # Track where the data came from (useful now, later replace this with bq:// or gs://)
+    data_source_uri = f"file://{DATA_DIR.as_posix()}"
+
     with mlflow.start_run(run_name="train") as run:
         mlflow.set_tag("step", "train")
         mlflow.set_tag("model_name", model_name)
+
+        # Dataset fingerprinting
+        fp = compute_fingerprint(
+            train_df=train_df,
+            test_df=test_df,
+            data_source_uri=data_source_uri,
+            index_cols=None,  # set i.e. ["id"] if stable identifier
+        )
+        mlflow.set_tags(fp.as_tags())
+
+        fp_path = ART_DIR / "dataset_fingerprint.json"
+        write_fingerprint_json(fp, fp_path)
+        mlflow.log_artifact(str(fp_path), artifact_path="reports")
 
         mlflow.log_params(
             {
@@ -89,11 +109,12 @@ def main() -> None:
         )
 
         # Also log a small JSON summary
-        summary_path = Path("/app/artifacts/train_summary.json")
+        summary_path = ART_DIR / "train_summary.json"
         summary_path.write_text(str(metrics))
         mlflow.log_artifact(str(summary_path), artifact_path="reports")
 
         print(f"[train] run_id={run.info.run_id}")
+        print(f"[train] dataset_fingerprint={fp_path}")
         print(f"[train] metrics={metrics}")
 
 

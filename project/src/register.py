@@ -10,6 +10,14 @@ from src.common.mlflow_utils import ensure_experiment
 
 ART_DIR = Path("/app/artifacts")
 
+FINGERPRINT_TAG_KEYS = [
+    "git_sha",
+    "dataset_content_hash",
+    "dataset_schema_hash",
+    "row_count",
+    "data_source_uri",
+]
+
 
 def main() -> None:
     ensure_experiment(get_experiment_name())
@@ -36,6 +44,10 @@ def main() -> None:
         print("[register] Gate failed. Not registering model.")
         return
 
+    # Fetch run tags (to propagate fingerprint onto model version)
+    run = client.get_run(train_run_id)
+    run_tags = run.data.tags or {}
+
     # Register model version
     mv = mlflow.register_model(model_uri=model_uri, name=model_name)
 
@@ -43,6 +55,12 @@ def main() -> None:
     client.set_model_version_tag(model_name, mv.version, "source_run_id", train_run_id)
     client.set_model_version_tag(model_name, mv.version, "gate", "passed")
     client.set_model_version_tag(model_name, mv.version, "release_status", "candidate")
+
+    # Propagate dataset fingerprint + git SHA tags onto the model version
+    for k in FINGERPRINT_TAG_KEYS:
+        v = run_tags.get(k)
+        if v is not None and str(v).strip() != "":
+            client.set_model_version_tag(model_name, mv.version, k, str(v))
 
     # Alias-based release: set candidate -> this version
     client.set_registered_model_alias(

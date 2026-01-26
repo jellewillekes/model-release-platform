@@ -80,6 +80,7 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       MODEL_NAME: breast_cancer_clf
       EXPERIMENT_NAME: breast-cancer-platform
+      GIT_SHA: ${GIT_SHA:-dev}
     command: ["python", "-m", "src.orchestrate"]
 
   promote:
