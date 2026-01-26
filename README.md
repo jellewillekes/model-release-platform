@@ -126,3 +126,18 @@ Start inference service:
 Verify deployment:
 
     make smoke-test
+
+------------------------------------------------------------------------
+
+Serving Modes (Canary + Shadow)
+
+The inference API supports multiple runtime modes:
+
+    POST /predict?mode=prod|candidate|canary|shadow
+
+- prod (default): always uses the model pointed to by alias `prod`
+- candidate: forces the model pointed to by alias `candidate`
+- canary: routes a percentage of requests to `candidate` and the rest to `prod` (controlled by `CANARY_PCT=0..100`)
+- shadow: always returns the `prod` prediction but also runs `candidate` and logs the comparison
+
+Each request logs the selected alias, model versions, and prediction metadata for offline analysis.

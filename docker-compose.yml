@@ -108,18 +108,26 @@ services:
       AWS_SECRET_ACCESS_KEY: minioadmin
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       MODEL_NAME: breast_cancer_clf
+      CANARY_PCT: "10"
+      LOG_LEVEL: "INFO"
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   smoke:
     build:
       context: ./serving
     depends_on:
       serving:
-        condition: service_started
+        condition: service_healthy
     environment:
       SERVE_URL: http://serving:8000
     command: ["python", "smoke_test.py"]
+
 
 volumes:
   pgdata:

@@ -5,15 +5,15 @@ on:
   push:
     branches: [master]
   schedule:
-    - cron: "0 3 * * *" # nightly 03:00 UTC
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
   checks:
+    name: checks (ruff+mypy+pytest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +25,20 @@ jobs:
           cache: "pip"
           cache-dependency-path: |
             project/pyproject.toml
+            mypy.ini
+            pytest.ini
 
       - name: Install project + dev tools
         run: |
           python -m pip install --upgrade pip
-          pip install -e ./project
-          pip install ruff mypy pytest
+          # Pipeline package (src/)
+          python -m pip install -e ./project
+
+          # Dev tools
+          python -m pip install ruff mypy pytest
+
+          # Serving test deps (unit tests only; no docker/MLflow server)
+          python -m pip install "mlflow>=2.13,<4.0" fastapi httpx requests pandas
 
       - name: Ruff (format + lint)
         run: |
@@ -38,19 +46,18 @@ jobs:
           ruff check .
 
       - name: Mypy
-        run: mypy project/src
+        run: |
+          mypy --config-file mypy.ini project/src serving
 
       - name: Pytest
-        run: pytest
+        run: |
+          pytest -q
 
   smoke:
+    name: smoke (docker compose e2e)
     runs-on: ubuntu-latest
     needs: checks
-    # Keep PRs fast: run e2e only on master pushes, nightly schedule, or manual trigger.
     if: github.event_name != 'pull_request'
-    env:
-      COMPOSE_DOCKER_CLI_BUILD: "1"
-      DOCKER_BUILDKIT: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -74,12 +81,6 @@ jobs:
 
       - name: Smoke test
         run: make smoke-test
-
-      - name: Debug logs on failure
-        if: failure()
-        run: |
-          docker compose ps
-          docker compose logs --tail=200
 
       - name: Tear down
         if: always()
