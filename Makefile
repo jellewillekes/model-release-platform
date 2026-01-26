@@ -1,8 +1,8 @@
 # Makefile
 # - Fast-by-default local gates
 # - Self-documenting `make help`
-# - Deterministic tool execution via uv (pinned deps)
-# - Safe shell flags
+# - Deterministic tool execution via uv
+# - Safe shell flags 
 
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
