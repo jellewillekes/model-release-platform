@@ -3,7 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Final, Literal, cast
+
+from serving.constants import ALIAS_CANDIDATE, ALIAS_PROD
+
+MODE_PROD: Final[str] = "prod"
+MODE_CANDIDATE: Final[str] = "candidate"
+MODE_CANARY: Final[str] = "canary"
+MODE_SHADOW: Final[str] = "shadow"
 
 Mode = Literal["prod", "candidate", "canary", "shadow"]
 Alias = Literal["prod", "candidate"]
@@ -48,20 +55,22 @@ def decide_routing(mode: Mode, canary_pct: int, bucket: int) -> RoutingDecision:
 
     canary_pct = max(0, min(100, int(canary_pct)))
 
-    if mode == "prod":
-        return RoutingDecision(chosen="prod", run_shadow=False)
+    # Use serving.constants for alias strings (single source of truth)
+    prod: Alias = cast(Alias, ALIAS_PROD)
+    candidate: Alias = cast(Alias, ALIAS_CANDIDATE)
 
-    if mode == "candidate":
-        return RoutingDecision(chosen="candidate", run_shadow=False)
+    if mode == MODE_PROD:
+        return RoutingDecision(chosen=prod, run_shadow=False)
 
-    if mode == "shadow":
-        return RoutingDecision(chosen="prod", run_shadow=True)
+    if mode == MODE_CANDIDATE:
+        return RoutingDecision(chosen=candidate, run_shadow=False)
 
-    if mode == "canary":
+    if mode == MODE_SHADOW:
+        return RoutingDecision(chosen=prod, run_shadow=True)
+
+    if mode == MODE_CANARY:
         if bucket < canary_pct:
-            return RoutingDecision(chosen="candidate", run_shadow=True)
-        return RoutingDecision(chosen="prod", run_shadow=True)
+            return RoutingDecision(chosen=candidate, run_shadow=True)
+        return RoutingDecision(chosen=prod, run_shadow=True)
 
-    # FastAPI Query(enum=...) should prevent this in production,
-    # but keep defensive code for direct calls/tests.
     raise ValueError(f"Unknown mode: {mode}")

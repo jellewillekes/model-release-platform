@@ -6,6 +6,7 @@ from pathlib import Path
 import mlflow
 
 from src.common.config import get_experiment_name, get_tracking_uri
+from src.common.constants import ART_TRAIN_RUN_ID, STEP_TRAIN, TAG_STEP
 from src.common.mlflow_utils import ensure_experiment
 
 ART_DIR = Path("/app/artifacts")
@@ -24,7 +25,7 @@ def _latest_train_run_id(experiment_id: str) -> str:
     """
     runs = mlflow.search_runs(
         experiment_ids=[experiment_id],
-        filter_string="tags.step = 'train'",
+        filter_string=f"tags.{TAG_STEP} = '{STEP_TRAIN}'",
         order_by=["attributes.start_time DESC"],
         max_results=1,
     )
@@ -62,8 +63,8 @@ def main() -> None:
     assert exp is not None
 
     train_run_id = _latest_train_run_id(exp.experiment_id)
-    (ART_DIR / "TRAIN_RUN_ID").write_text(str(train_run_id))
-    print(f"[orchestrate] Captured TRAIN_RUN_ID={train_run_id}")
+    (ART_DIR / ART_TRAIN_RUN_ID).write_text(str(train_run_id), encoding="utf-8")
+    print(f"[orchestrate] Captured {ART_TRAIN_RUN_ID}={train_run_id}")
 
     _run_step("evaluate")
     _run_step("register")

@@ -114,7 +114,13 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()",
+        ]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -127,8 +133,7 @@ services:
         condition: service_healthy
     environment:
       SERVE_URL: http://serving:8000
-    command: ["python", "smoke_test.py"]
-
+    command: ["python", "-m", "serving.smoke_test"]
 
 volumes:
   pgdata:
