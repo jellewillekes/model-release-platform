@@ -4,16 +4,19 @@ import json
 import logging
 import os
 import time
-from typing import Any, cast, Literal
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal, cast
+
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from starlette.responses import Response
 
 try:
     import mlflow  # type: ignore
 except Exception:  # pragma: no cover
     mlflow = None  # type: ignore[assignment]
-
-import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, Field
 
 from serving.constants import (
     ALIAS_CANDIDATE,
@@ -26,8 +29,15 @@ from serving.constants import (
     ENV_MODEL_NAME,
     ENV_PROD_ALIAS,
     ENV_UNIT_TESTING,
+    HEADER_REQUEST_ID,
 )
-from serving.router import Mode, decide_routing, stable_bucket_from_rows
+from serving.router import (
+    BucketContext,
+    Mode,
+    SeedSource,
+    choose_canary_bucket,
+    decide_routing,
+)
 
 logger = logging.getLogger("serving")
 logging.basicConfig(level=os.getenv(ENV_LOG_LEVEL, "INFO"))
@@ -48,6 +58,30 @@ CACHE_TTL_SEC = float(os.getenv(ENV_MODEL_CACHE_TTL_SEC, "60"))
 app = FastAPI()
 
 
+@app.middleware("http")
+async def request_id_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Ensure every request has a request-id and echo it back.
+
+    If the client supplies X-Request-Id we keep it and use it for deterministic
+    bucketing (stable across retries). Otherwise we generate a request id for
+    traceability only.
+    """
+    incoming = request.headers.get(HEADER_REQUEST_ID)
+    if incoming and incoming.strip():
+        request.state.request_id = incoming.strip()
+        request.state.client_provided_request_id = True
+    else:
+        request.state.request_id = uuid.uuid4().hex
+        request.state.client_provided_request_id = False
+
+    response = await call_next(request)
+    response.headers[HEADER_REQUEST_ID] = request.state.request_id
+    return response
+
+
 class PredictRequest(BaseModel):
     rows: list[dict[str, Any]] = Field(
         ..., description="List of feature dicts (one per row)"
@@ -61,6 +95,7 @@ class PredictResponse(BaseModel):
     chosen: Literal["prod", "candidate"]
     bucket: int | None = None
     canary_pct: int | None = None
+    bucket_seed_source: str | None = None
 
 
 def _models_uri(alias: str) -> str:
@@ -141,10 +176,23 @@ async def predict(
     mode: Mode = Query(default="prod", description="prod|candidate|shadow|canary"),
 ) -> PredictResponse:
     bucket: int | None = None
+    bucket_seed_source: SeedSource | None = None
+
     if mode == "canary":
-        bucket = stable_bucket_from_rows(payload.rows)
+        bd = choose_canary_bucket(
+            BucketContext(
+                request_id=getattr(request.state, "request_id", None),
+                client_provided_request_id=bool(
+                    getattr(request.state, "client_provided_request_id", False)
+                ),
+                rows=payload.rows,
+            )
+        )
+        bucket = bd.bucket
+        bucket_seed_source = bd.seed_source
         decision = decide_routing(mode=mode, canary_pct=CANARY_PCT, bucket=bucket)
     else:
+        # bucket unused except for validation in canary mode
         decision = decide_routing(mode=mode, canary_pct=CANARY_PCT, bucket=0)
 
     primary_alias: Literal["prod", "candidate"] = decision.chosen
@@ -176,10 +224,12 @@ async def predict(
 
     log: dict[str, Any] = {
         "event": "predict",
+        "request_id": getattr(request.state, "request_id", None),
         "client": request.client.host if request.client else None,
         "mode": mode,
         "chosen": primary_alias,
         "bucket": bucket,
+        "bucket_seed_source": str(bucket_seed_source) if bucket_seed_source else None,
         "canary_pct": CANARY_PCT if mode == "canary" else None,
         "shadow_mae": shadow_mae,
         "prod_version": prod_version,
@@ -194,4 +244,5 @@ async def predict(
         chosen=primary_alias,
         bucket=bucket,
         canary_pct=CANARY_PCT if mode == "canary" else None,
+        bucket_seed_source=str(bucket_seed_source) if bucket_seed_source else None,
     )

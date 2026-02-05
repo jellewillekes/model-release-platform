@@ -7,6 +7,8 @@ import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from fastapi.testclient import TestClient
 
+from serving.constants import HEADER_REQUEST_ID
+
 
 class _Predictor(Protocol):
     """Protocol for a minimal pyfunc-like model interface."""
@@ -83,3 +85,41 @@ def test_predict_modes(client: TestClient, mode: str, expected: float) -> None:
 def test_predict_invalid_payload_422(client: TestClient) -> None:
     r = client.post("/predict", json={"not_rows": []})
     assert r.status_code == 422
+
+
+def test_request_id_header_is_echoed_if_provided(client: TestClient) -> None:
+    rid = "test-rid-123"
+    r = client.post(
+        "/predict?mode=prod",
+        json=_payload(),
+        headers={HEADER_REQUEST_ID: rid},
+    )
+    assert r.status_code == 200
+    assert r.headers.get(HEADER_REQUEST_ID) == rid
+
+
+def test_request_id_header_is_generated_if_missing(client: TestClient) -> None:
+    r = client.post("/predict?mode=prod", json=_payload())
+    assert r.status_code == 200
+    gen = r.headers.get(HEADER_REQUEST_ID)
+    assert gen is not None
+    assert len(gen) >= 16
+
+
+def test_canary_bucket_is_stable_for_same_request_id(client: TestClient) -> None:
+    rid = "sticky-rid-999"
+    r1 = client.post(
+        "/predict?mode=canary",
+        json=_payload(),
+        headers={HEADER_REQUEST_ID: rid},
+    )
+    r2 = client.post(
+        "/predict?mode=canary",
+        json=_payload(),
+        headers={HEADER_REQUEST_ID: rid},
+    )
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r1.json()["bucket"] == r2.json()["bucket"]
+    assert r1.json()["bucket_seed_source"] == "request_id"
+    assert r2.json()["bucket_seed_source"] == "request_id"

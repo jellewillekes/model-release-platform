@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Final, Literal, cast
 
 from serving.constants import ALIAS_CANDIDATE, ALIAS_PROD
@@ -14,6 +16,14 @@ MODE_SHADOW: Final[str] = "shadow"
 
 Mode = Literal["prod", "candidate", "canary", "shadow"]
 Alias = Literal["prod", "candidate"]
+
+
+class SeedSource(StrEnum):
+    """Source of entropy used for deterministic bucketing."""
+
+    REQUEST_ID = "request_id"
+    PAYLOAD_HASH = "payload_hash"
+    RANDOM = "random"
 
 
 @dataclass(frozen=True)
@@ -28,14 +38,71 @@ class RoutingDecision:
     run_shadow: bool
 
 
-def stable_bucket_from_rows(rows: list[dict[str, Any]]) -> int:
-    """Returns a stable bucket in [0, 99] based on request content.
+@dataclass(frozen=True)
+class BucketContext:
+    """Inputs for stable bucketing.
 
-    This enables deterministic canary routing (no per-request flapping).
+    If the client provides a request id, we use it as the primary seed. This is
+    the only way to guarantee a stable bucket across retries.
+
+    If the client does NOT provide a request id, we fall back to the request
+    payload (stable for identical payloads), and finally to a random fallback.
     """
-    payload = json.dumps(rows, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    request_id: str | None
+    client_provided_request_id: bool
+    rows: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class BucketDecision:
+    bucket: int
+    seed_source: SeedSource
+
+
+def stable_bucket_from_bytes(payload: bytes) -> int:
+    """Returns a stable bucket in [0, 99] for arbitrary bytes."""
     h = hashlib.sha256(payload).hexdigest()
     return int(h, 16) % 100
+
+
+def stable_bucket_from_str(seed: str) -> int:
+    """Returns a stable bucket in [0, 99] for a text seed."""
+    return stable_bucket_from_bytes(seed.encode("utf-8"))
+
+
+def stable_bucket_from_rows(rows: list[dict[str, Any]]) -> int:
+    """Returns a stable bucket in [0, 99] based on request content."""
+    payload = json.dumps(rows, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return stable_bucket_from_bytes(payload)
+
+
+def choose_canary_bucket(ctx: BucketContext) -> BucketDecision:
+    """Choose a bucket using a deterministic seed priority.
+
+    Priority:
+      1) client-provided request id (stable across retries)
+      2) payload hash (stable for identical payload)
+      3) random fallback (should be rare; kept for defensive robustness)
+    """
+    if ctx.client_provided_request_id and ctx.request_id:
+        return BucketDecision(
+            bucket=stable_bucket_from_str(ctx.request_id),
+            seed_source=SeedSource.REQUEST_ID,
+        )
+
+    try:
+        return BucketDecision(
+            bucket=stable_bucket_from_rows(ctx.rows),
+            seed_source=SeedSource.PAYLOAD_HASH,
+        )
+    except Exception:
+        # Defensive fallback: if payload isn't JSON-serializable for some reason.
+        seed = secrets.token_hex(16)
+        return BucketDecision(
+            bucket=stable_bucket_from_str(seed),
+            seed_source=SeedSource.RANDOM,
+        )
 
 
 def decide_routing(mode: Mode, canary_pct: int, bucket: int) -> RoutingDecision:

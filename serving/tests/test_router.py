@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from serving.router import decide_routing
+from serving.router import (
+    BucketContext,
+    SeedSource,
+    choose_canary_bucket,
+    decide_routing,
+)
 
 
 def test_prod_routes_to_prod_only() -> None:
@@ -47,3 +52,28 @@ def test_bucket_bounds_are_enforced() -> None:
         decide_routing(mode="canary", canary_pct=10, bucket=-1)
     with pytest.raises(ValueError):
         decide_routing(mode="canary", canary_pct=10, bucket=100)
+
+
+def test_same_request_id_yields_same_bucket() -> None:
+    ctx = BucketContext(
+        request_id="abc-123",
+        client_provided_request_id=True,
+        rows=[{"x": 1, "y": 2}],
+    )
+    b1 = choose_canary_bucket(ctx)
+    b2 = choose_canary_bucket(ctx)
+    assert b1.bucket == b2.bucket
+    assert b1.seed_source == SeedSource.REQUEST_ID
+
+
+def test_payload_hash_fallback_is_stable() -> None:
+    rows = [{"x": 1, "y": 2}, {"x": 3, "y": 4}]
+    ctx = BucketContext(
+        request_id=None,
+        client_provided_request_id=False,
+        rows=rows,
+    )
+    b1 = choose_canary_bucket(ctx)
+    b2 = choose_canary_bucket(ctx)
+    assert b1.bucket == b2.bucket
+    assert b1.seed_source == SeedSource.PAYLOAD_HASH
