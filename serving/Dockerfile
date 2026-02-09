@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir \
   numpy \
   pydantic \
   pydantic-settings \
+  prometheus-client \
   requests \
   scikit-learn \
   joblib
@@ -21,6 +22,7 @@ COPY __init__.py /app/serving/__init__.py
 COPY app.py /app/serving/app.py
 COPY router.py /app/serving/router.py
 COPY constants.py /app/serving/constants.py
+COPY metrics.py /app/serving/metrics.py
 COPY settings.py /app/serving/settings.py
 COPY smoke_test.py /app/serving/smoke_test.py
 
