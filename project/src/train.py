@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 from pathlib import Path
+from typing import Final
 
 import joblib
 import mlflow
@@ -19,11 +22,14 @@ from src.common.constants import (
     LABEL_COL,
     MLFLOW_ARTIFACT_PATH_MODEL,
     MLFLOW_ARTIFACT_PATH_REPORTS,
-    TEST_CSV,
-    TRAIN_CSV,
     STEP_TRAIN,
+    TAG_CONFIG_HASH,
+    TAG_DATASET_FINGERPRINT,
     TAG_MODEL_NAME,
     TAG_STEP,
+    TAG_TRAINING_RUN_ID,
+    TEST_CSV,
+    TRAIN_CSV,
 )
 from src.common.mlflow_utils import ensure_experiment
 from src.contracts.dataset_fingerprint import (
@@ -31,20 +37,27 @@ from src.contracts.dataset_fingerprint import (
     write_fingerprint_json,
 )
 
-DATA_DIR = Path("/app/data")
-ART_DIR = Path("/app/artifacts")
+logger = logging.getLogger(__name__)
+
+DATA_DIR: Final[Path] = Path("/app/data")
+ART_DIR: Final[Path] = Path("/app/artifacts")
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def main() -> None:
-    ensure_experiment(get_experiment_name())
-    mlflow.set_experiment(get_experiment_name())
+    logging.basicConfig(level="INFO")
+
+    experiment_name = get_experiment_name()
+    ensure_experiment(experiment_name)
+    mlflow.set_experiment(experiment_name)
+
     model_name = get_model_name()
 
-    train_path = DATA_DIR / TRAIN_CSV
-    test_path = DATA_DIR / TEST_CSV
-
-    train_df = pd.read_csv(train_path)
-    test_df = pd.read_csv(test_path)
+    train_df = pd.read_csv(DATA_DIR / TRAIN_CSV)
+    test_df = pd.read_csv(DATA_DIR / TEST_CSV)
 
     X_train = train_df.drop(columns=[LABEL_COL])
     y_train = train_df[LABEL_COL].astype(int)
@@ -61,26 +74,31 @@ def main() -> None:
         random_state=42,
     )
 
-    pipeline = Pipeline(
-        steps=[
-            ("pre", preprocessor),
-            ("clf", clf),
-        ]
-    )
+    pipeline = Pipeline(steps=[("pre", preprocessor), ("clf", clf)])
 
-    # Track where the data came from (replace later with bq:// or gs://)
+    # Used for traceability + reproducibility. In production, this becomes gs:// or bq://.
     data_source_uri = f"file://{DATA_DIR.as_posix()}"
+
+    params = {
+        "model_type": "logreg",
+        "max_iter": 2000,
+        "solver": "lbfgs",
+        "class_weight": "balanced",
+        "random_state": 42,
+    }
 
     with mlflow.start_run(run_name="train") as run:
         mlflow.set_tag(TAG_STEP, STEP_TRAIN)
         mlflow.set_tag(TAG_MODEL_NAME, model_name)
 
-        # Dataset fingerprinting
+        # Promotion guardrail: the candidate must always point back to the training run.
+        mlflow.set_tag(TAG_TRAINING_RUN_ID, run.info.run_id)
+
         fp = compute_fingerprint(
             train_df=train_df,
             test_df=test_df,
             data_source_uri=data_source_uri,
-            index_cols=None,  # set i.e. ["id"] if stable identifier exists
+            index_cols=None,
         )
         mlflow.set_tags(fp.as_tags())
 
@@ -88,15 +106,16 @@ def main() -> None:
         write_fingerprint_json(fp, fp_path)
         mlflow.log_artifact(str(fp_path), artifact_path=MLFLOW_ARTIFACT_PATH_REPORTS)
 
-        mlflow.log_params(
-            {
-                "model_type": "logreg",
-                "max_iter": 2000,
-                "solver": "lbfgs",
-                "class_weight": "balanced",
-                "random_state": 42,
-            }
+        mlflow.log_params(params)
+
+        # Deterministic config hash is a promotion guardrail.
+        config_hash = _sha256_text(
+            json.dumps(params, sort_keys=True, separators=(",", ":"))
         )
+        mlflow.set_tag(TAG_CONFIG_HASH, config_hash)
+
+        # One stable dataset fingerprint hash (in addition to component tags).
+        mlflow.set_tag(TAG_DATASET_FINGERPRINT, _sha256_text(fp.to_json()))
 
         pipeline.fit(X_train, y_train)
 
@@ -110,22 +129,19 @@ def main() -> None:
         }
         mlflow.log_metrics(metrics)
 
-        # signature & input example
         input_example = X_test.head(5)
         signature = infer_signature(
             input_example, pipeline.predict_proba(input_example)[:, 1]
         )
 
-        # Log model
         mlflow.sklearn.log_model(
             sk_model=pipeline,
             artifact_path=MLFLOW_ARTIFACT_PATH_MODEL,
             signature=signature,
             input_example=input_example,
-            registered_model_name=None,  # registration happens in register step
+            registered_model_name=None,
         )
 
-        # Also log a small JSON summary
         summary_path = ART_DIR / ART_TRAIN_SUMMARY_JSON
         summary_path.write_text(
             json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8"
@@ -134,9 +150,9 @@ def main() -> None:
             str(summary_path), artifact_path=MLFLOW_ARTIFACT_PATH_REPORTS
         )
 
-        print(f"[train] run_id={run.info.run_id}")
-        print(f"[train] dataset_fingerprint={fp_path}")
-        print(f"[train] metrics={metrics}")
+        logger.info("run_id=%s", run.info.run_id)
+        logger.info("dataset_fingerprint=%s", fp_path)
+        logger.info("metrics=%s", metrics)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,13 @@ TAG_DATASET_SCHEMA_HASH = "dataset_schema_hash"
 TAG_ROW_COUNT = "row_count"
 TAG_DATA_SOURCE_URI = "data_source_uri"
 
+# Promotion guardrail tags
+# NOTE: Dataset lineage already exists as multiple tags (content/schema hashes, row_count, uri).
+# For promotion safety we additionally compute a single stable fingerprint hash.
+TAG_DATASET_FINGERPRINT = "dataset_fingerprint"
+TAG_CONFIG_HASH = "config_hash"
+TAG_TRAINING_RUN_ID = "training_run_id"
+
 TAG_SOURCE_RUN_ID = "source_run_id"
 TAG_GATE = "gate"
 TAG_RELEASE_STATUS = "release_status"

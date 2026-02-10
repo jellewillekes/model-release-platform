@@ -1,3 +1,4 @@
+# Python bytecode
 __pycache__/
 *.py[cod]
 *.pyd
@@ -19,4 +20,13 @@ build/
 dist/
 *.egg-info/
 
+# OS
 .DS_Store
+
+# MLflow local state
+mlruns/
+mlartifacts/
+
+# Local runtime artifacts (compose/dev)
+artifacts/
+data/
