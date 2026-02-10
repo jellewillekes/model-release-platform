@@ -1,9 +1,3 @@
-# Makefile
-# - Fast-by-default local gates
-# - Self-documenting `make help`
-# - Deterministic tool execution via uv
-# - Safe shell flags 
-
 SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 .ONESHELL:
@@ -13,62 +7,57 @@ MAKEFLAGS += --no-builtin-rules
 
 PROJECT_NAME := model-release-platform
 
-# Paths
 UV_PROJECT_DIR := project
 
-# Tooling
 UV ?= uv
 DOCKER ?= docker
 COMPOSE ?= $(DOCKER) compose
 
-# Always run tools against the uv project in ./project
 UV_RUN := $(UV) run --project $(UV_PROJECT_DIR)
+PY := $(UV_RUN) python
 
-PY ?= $(UV_RUN) python
-
-RUFF ?= $(PY) -m ruff
-MYPY ?= $(PY) -m mypy
-PYTEST ?= $(PY) -m pytest
-PRECOMMIT ?= $(PY) -m pre_commit
+RUFF := $(PY) -m ruff
+MYPY := $(PY) -m mypy
+PYTEST := $(PY) -m pytest
+PRECOMMIT := $(PY) -m pre_commit
 
 MYPY_CONFIG ?= mypy.ini
 MYPY_PATHS ?= project/src serving
 PYTEST_ARGS ?= -q
 
-# Docker compose service names (centralize to avoid drift)
 SVC_INFRA := postgres minio mlflow-server minio-init
-SVC_IMAGES := pipeline promote serving smoke
+SVC_IMAGES := pipeline promote rollback serving smoke
 
-# Helpers
 .PHONY: help
 help:
 	@echo ""
 	@echo "$(PROJECT_NAME)"
 	@echo ""
-	@echo "Local quality gates:"
-	@echo "  make check          Run format+lint+type+test (fast gate)"
-	@echo "  make fix            Auto-fix formatting + safe lint fixes"
-	@echo "  make precommit      Run all pre-commit hooks on all files"
-	@echo "  make install-hooks  Install git pre-commit hooks"
+	@echo "Local:"
+	@echo "  make check            format+lint+type+test"
+	@echo "  make fix              format + safe autofix"
+	@echo "  make precommit         run all hooks"
+	@echo "  make install-hooks     install git hooks"
 	@echo ""
-	@echo "Docker workflow:"
-	@echo "  make up             Start infra services ($(SVC_INFRA))"
-	@echo "  make down           Stop everything and wipe volumes"
-	@echo "  make logs           Tail docker compose logs"
-	@echo "  make build          Build runtime images ($(SVC_IMAGES))"
-	@echo "  make reset          Full nuke: down + no-cache rebuild"
-	@echo "  make run-pipeline   Run training + registration pipeline"
-	@echo "  make promote        Promote candidate -> prod"
-	@echo "  make serve          Start serving API"
-	@echo "  make smoke-test     Run smoke tests against serving API"
+	@echo "Docker:"
+	@echo "  make up               start infra ($(SVC_INFRA))"
+	@echo "  make down             stop + wipe volumes"
+	@echo "  make logs             tail logs"
+	@echo "  make build            build runtime images ($(SVC_IMAGES))"
+	@echo "  make reset            down + no-cache rebuild"
+	@echo "  make run-pipeline      train+eval+register (candidate)"
+	@echo "  make promote           candidate -> prod"
+	@echo "  make rollback-prod     prod -> previous prod"
+	@echo "  make serve             start serving API"
+	@echo "  make smoke-test        smoke tests against serving"
+	@echo "  make e2e               2x promote + rollback + serve + smoke"
+	@echo "  make e2e-keep          like e2e, but keep stack up"
 	@echo ""
 	@echo "Housekeeping:"
-	@echo "  make clean          Remove local caches"
+	@echo "  make clean            remove local caches"
 	@echo ""
 
-# Local quality gates
 .PHONY: check format lint type test fix
-
 check: format lint type test
 	@echo "✅ All checks passed"
 
@@ -88,18 +77,14 @@ fix:
 	@$(RUFF) format .
 	@$(RUFF) check --fix .
 
-# Pre-commit
 .PHONY: precommit install-hooks
-
 precommit:
 	@$(PRECOMMIT) run --all-files
 
 install-hooks:
 	@$(PRECOMMIT) install
 
-# Docker / local infra
-.PHONY: up down logs build reset run-pipeline promote serve smoke-test
-
+.PHONY: up down logs build reset run-pipeline promote rollback-prod serve smoke-test e2e e2e-keep
 up:
 	@$(COMPOSE) up -d $(SVC_INFRA)
 	@echo "MLflow UI: http://localhost:5050"
@@ -108,20 +93,23 @@ up:
 down:
 	@$(COMPOSE) down -v
 
-reset: down
-	@$(COMPOSE) build --no-cache $(SVC_IMAGES)
-
 logs:
 	@$(COMPOSE) logs -f --tail=200
 
 build:
 	@$(COMPOSE) build $(SVC_IMAGES)
 
+reset: down
+	@$(COMPOSE) build --no-cache $(SVC_IMAGES)
+
 run-pipeline: build
 	@$(COMPOSE) run --rm pipeline
 
 promote: build
 	@$(COMPOSE) run --rm promote
+
+rollback-prod: build
+	@$(COMPOSE) run --rm rollback
 
 serve: build
 	@$(COMPOSE) up -d --build serving
@@ -130,7 +118,32 @@ serve: build
 smoke-test: build
 	@$(COMPOSE) run --rm --build smoke
 
-# Housekeeping
+e2e: build
+	@set -euo pipefail; \
+	cleanup() { $(COMPOSE) down -v; }; \
+	trap cleanup EXIT; \
+	$(COMPOSE) up -d $(SVC_INFRA); \
+	$(COMPOSE) run --rm pipeline; \
+	$(COMPOSE) run --rm promote; \
+	$(COMPOSE) run --rm pipeline; \
+	$(COMPOSE) run --rm promote; \
+	$(COMPOSE) run --rm rollback; \
+	$(COMPOSE) up -d --build serving; \
+	$(COMPOSE) run --rm --build smoke; \
+	echo "✅ E2E passed"
+
+e2e-keep: build
+	@set -euo pipefail; \
+	$(COMPOSE) up -d $(SVC_INFRA); \
+	$(COMPOSE) run --rm pipeline; \
+	$(COMPOSE) run --rm promote; \
+	$(COMPOSE) run --rm pipeline; \
+	$(COMPOSE) run --rm promote; \
+	$(COMPOSE) run --rm rollback; \
+	$(COMPOSE) up -d --build serving; \
+	$(COMPOSE) run --rm --build smoke; \
+	echo "✅ E2E passed (stack kept up). Use 'make logs' or 'make down' when done."
+
 .PHONY: clean
 clean:
 	@rm -rf .pytest_cache .ruff_cache .mypy_cache **/__pycache__ || true
