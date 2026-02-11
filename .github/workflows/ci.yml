@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   checks:
-    name: checks (ruff+mypy+pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -23,12 +22,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fail if forbidden paths are tracked
+        shell: bash
         run: |
           set -euo pipefail
           forbidden_regex='(^mlruns/|^mlartifacts/|^\.venv/|^venv/|^\.pytest_cache/|^\.mypy_cache/|^\.ruff_cache/|^__pycache__/|\.DS_Store$|^data/|^artifacts/)'
           if git ls-files | egrep -n "${forbidden_regex}"; then
-            echo ""
-            echo "ERROR: Forbidden files are tracked by git. Remove them from the index and add them to .gitignore."
+            echo "Forbidden files are tracked by git. Remove from the index and add to .gitignore."
             exit 1
           fi
 
@@ -39,22 +38,23 @@ jobs:
           cache: "pip"
           cache-dependency-path: |
             project/pyproject.toml
+            project/uv.lock
             mypy.ini
             pytest.ini
 
-      - name: Install project + dev tools
+      - name: Install
+        shell: bash
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-
           python -m pip install -e ./project
-
           python -m pip install \
             "ruff==0.9.6" \
             "mypy==1.15.0" \
             "pytest==8.3.4" \
             "types-requests==2.32.0.20241016"
 
+          # test/runtime deps used by modules imported in unit tests
           python -m pip install \
             "mlflow>=2.13,<4.0" \
             "fastapi>=0.110,<1.0" \
@@ -62,22 +62,30 @@ jobs:
             "requests>=2.31,<3.0" \
             "pandas>=2.0,<3.0"
 
-      - name: Ruff (format)
+      - name: Ruff
+        shell: bash
         run: |
           set -euo pipefail
           ruff format --check .
-
-      - name: Ruff (lint)
-        run: |
-          set -euo pipefail
           ruff check --output-format=github .
 
       - name: Mypy
+        shell: bash
         run: |
           set -euo pipefail
-          mypy --config-file mypy.ini project/src serving
+          mypy --config-file mypy.ini project/src serving | tee mypy.txt
 
       - name: Pytest
+        shell: bash
         run: |
           set -euo pipefail
-          pytest -q
+          pytest -q --maxfail=1 --disable-warnings | tee pytest.txt
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: presubmit-debug
+          path: |
+            mypy.txt
+            pytest.txt

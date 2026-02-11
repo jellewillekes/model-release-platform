@@ -1,5 +1,5 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented here.
 
-This project follows Conventional Commits and uses Release Please to generate release PRs.
+This repo follows Conventional Commits and uses Release Please to generate release PRs.

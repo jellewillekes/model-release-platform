@@ -27,4 +27,4 @@ jobs:
           requireScope: false
           subjectPattern: ^(?![A-Z]).+$
           subjectPatternError: >
-            Use Conventional Commits style: "type: description" (lowercase start, no trailing period).
+            Use Conventional Commits: "type: description" (lowercase start, no trailing period).

@@ -1,19 +1,19 @@
 ## What
-<!-- One or two sentences. What changed? -->
+<!-- What changed? -->
 
 ## Why
-<!-- The user / system impact. Link issue(s) if applicable. -->
+<!-- Why now? What user/system impact? Link issue(s) if applicable. -->
 
 ## How
-<!-- Implementation notes: key decisions, tradeoffs, and anything non-obvious. -->
+<!-- Key decisions / tradeoffs. Call out anything non-obvious. -->
 
 ## Testing
-- [ ] Unit tests
+- [ ] Unit
 - [ ] Integration / E2E
-- [ ] Manual (describe):
+- [ ] Manual (describe)
 
 ## Risk
-<!-- Where could this break? What’s the blast radius? -->
+<!-- Blast radius and failure modes. -->
 
 ## Rollback
-<!-- Exact rollback plan (command, revert, or config change). -->
+<!-- Concrete rollback: revert SHA / command / config change. -->

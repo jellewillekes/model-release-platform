@@ -4,20 +4,20 @@
 
 This repo uses `uv` for deterministic dependency management.
 
-From the repo root:
+Common workflows:
 
-- `make check` – format + lint + type + tests
-- `make e2e` – end-to-end flow (docker compose)
+- `make check` — format + lint + type + tests
+- `make e2e` — docker compose end-to-end flow
 
 ## Branching & PRs
 
-- Create feature branches off `master`.
-- Keep PRs small and reviewable (prefer <300 LOC change).
-- Use the PR template and include a rollback plan when behavior changes.
+- Branch off `master`.
+- Keep PRs small and reviewable (prefer <300 LOC).
+- Include a rollback plan when behavior changes.
 
 ## Commit / PR title conventions
 
-We use Conventional Commits for PR titles:
+PR titles follow Conventional Commits:
 
 - `feat: ...`
 - `fix: ...`
@@ -37,15 +37,16 @@ Before opening a PR:
 ## Dependency updates
 
 Dependabot opens weekly PRs for:
+
 - GitHub Actions versions
 - Python dependencies under `/project`
 
-### Pre-commit hooks
+## Pre-commit hooks (optional)
 
-Install hooks locally:
+Install hooks:
 
 ```bash
-pip install pre-commit
+python -m pip install pre-commit
 pre-commit install
 pre-commit install --hook-type pre-push
 ```

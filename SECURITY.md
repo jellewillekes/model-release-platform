@@ -2,12 +2,12 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security issue, please do not open a public GitHub issue.
+Do not open public issues for security reports.
 
-Instead, contact the maintainer via GitHub direct message and include:
-- a description of the issue
-- steps to reproduce
-- potential impact
-- any suggested remediation
+Contact the maintainer via GitHub direct message and include:
+- description
+- reproduction steps
+- impact assessment
+- suggested remediation (if any)
 
 You should receive an acknowledgement within 7 days.
