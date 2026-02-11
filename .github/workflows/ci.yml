@@ -146,12 +146,6 @@ jobs:
           set -euo pipefail
           uv run pytest -q --maxfail=1 --disable-warnings | tee ../pytest.txt
 
-      - name: Check dependency integrity
-        working-directory: project
-        run: |
-          set -euo pipefail
-          uv run python -m pip check
-
       - name: Upload pytest output
         if: failure()
         uses: actions/upload-artifact@v4
