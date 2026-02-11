@@ -1,7 +1,8 @@
 {
-  "release-type": "simple",
+  "release-type": "python",
+  "include-v-in-tag": true,
   "packages": {
-    ".": {
+    "project": {
       "changelog-path": "CHANGELOG.md"
     }
   }

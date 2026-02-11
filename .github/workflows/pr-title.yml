@@ -1,4 +1,4 @@
-name: PR-title
+name: PR Title
 
 on:
   pull_request:
