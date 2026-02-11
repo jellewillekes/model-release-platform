@@ -13,10 +13,100 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PYTHON_VERSION: "3.11"
+
 jobs:
-  checks:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            project/uv.lock
+            project/pyproject.toml
+
+      - name: Sync (locked)
+        working-directory: project
+        run: |
+          set -euo pipefail
+          uv sync --frozen --group dev
+
+      - name: Ruff format
+        working-directory: project
+        run: |
+          set -euo pipefail
+          uv run ruff format --check ..
+
+      - name: Ruff lint
+        working-directory: project
+        run: |
+          set -euo pipefail
+          uv run ruff check --output-format=github ..
+
+
+  typecheck:
+    name: Typecheck (mypy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            project/uv.lock
+            project/pyproject.toml
+
+      - name: Sync (locked)
+        working-directory: project
+        run: |
+          set -euo pipefail
+          uv sync --frozen --group dev
+
+      - name: Mypy
+        working-directory: project
+        run: |
+          set -euo pipefail
+          uv run mypy \
+            --config-file ../mypy.ini \
+            src ../serving \
+            | tee ../mypy.txt
+
+      - name: Upload mypy output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mypy-output
+          path: mypy.txt
+
+
+  test:
+    name: Tests (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: typecheck
 
     steps:
       - uses: actions/checkout@v4
@@ -34,58 +124,31 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
-          cache-dependency-path: |
-            project/pyproject.toml
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
             project/uv.lock
-            mypy.ini
-            pytest.ini
+            project/pyproject.toml
 
-      - name: Install
-        shell: bash
+      - name: Sync (locked)
+        working-directory: project
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip
-          python -m pip install -e ./project
-          python -m pip install \
-            "ruff==0.9.6" \
-            "mypy==1.15.0" \
-            "pytest==8.3.4" \
-            "types-requests==2.32.0.20241016"
+          uv sync --frozen --group dev
 
-          # test/runtime deps used by modules imported in unit tests
-          python -m pip install \
-            "mlflow>=2.13,<4.0" \
-            "fastapi>=0.110,<1.0" \
-            "httpx>=0.26,<1.0" \
-            "requests>=2.31,<3.0" \
-            "pandas>=2.0,<3.0"
-
-      - name: Ruff
-        shell: bash
+      - name: Run tests
+        working-directory: project
         run: |
           set -euo pipefail
-          ruff format --check .
-          ruff check --output-format=github .
+          uv run pytest -q --maxfail=1 --disable-warnings | tee ../pytest.txt
 
-      - name: Mypy
-        shell: bash
-        run: |
-          set -euo pipefail
-          mypy --config-file mypy.ini project/src serving | tee mypy.txt
-
-      - name: Pytest
-        shell: bash
-        run: |
-          set -euo pipefail
-          pytest -q --maxfail=1 --disable-warnings | tee pytest.txt
-
-      - name: Upload failure artifacts
+      - name: Upload pytest output
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: presubmit-debug
-          path: |
-            mypy.txt
-            pytest.txt
+          name: pytest-output
+          path: pytest.txt

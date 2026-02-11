@@ -1,9 +1,69 @@
-name: Dependabot
-
 version: 2
+
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    labels: ["dependencies", "ci"]
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+
+    labels:
+      - dependencies
+      - ci
+
+    commit-message:
+      prefix: "deps(actions)"
+
+    open-pull-requests-limit: 5
+
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+
+  - package-ecosystem: "docker"
+    directory: "/project"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+
+    labels:
+      - dependencies
+
+    commit-message:
+      prefix: "deps(docker)"
+
+
+  - package-ecosystem: "docker"
+    directory: "/serving"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+
+    labels:
+      - dependencies
+
+    commit-message:
+      prefix: "deps(docker)"
+
+
+  - package-ecosystem: "docker"
+    directory: "/mlflow_server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+
+    labels:
+      - dependencies
+
+    commit-message:
+      prefix: "deps(docker)"
