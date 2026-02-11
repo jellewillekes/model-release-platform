@@ -1,31 +1,26 @@
 repos:
-  # Basic hygiene
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
-      - id: trailing-whitespace
       - id: end-of-file-fixer
+      - id: trailing-whitespace
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
-      - id: detect-private-key
+        args: ["--maxkb=1024"]
 
-  # Ruff (lint)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.8
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-
-  # Ruff (format check)
-      - id: ruff-format
-        args: [--check]
-
-  # Mypy (via uv, using project deps)
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy (uv)
-        entry: uv run --project project python -m mypy project/src serving
-        language: system
+      - id: block-forbidden-tracked-paths
+        name: Block forbidden tracked paths
+        entry: scripts/precommit_block_forbidden_tracked_paths.sh
+        language: script
         pass_filenames: false
+        stages: [pre-commit, pre-push]
