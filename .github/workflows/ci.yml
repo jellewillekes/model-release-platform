@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload mypy output
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mypy-output
           path: mypy.txt
@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload pytest output
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pytest-output
           path: pytest.txt
