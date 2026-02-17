@@ -1,4 +1,4 @@
-# Model Release Platform
+# ML Lifecycle Platform
 
 [![CI](https://github.com/jellewillekes/model-release-platform/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/jellewillekes/model-release-platform/actions/workflows/ci.yml)
 [![E2E](https://github.com/jellewillekes/model-release-platform/actions/workflows/e2e.yml/badge.svg?branch=master)](https://github.com/jellewillekes/model-release-platform/actions/workflows/e2e.yml)
@@ -22,37 +22,34 @@ This repository serves as a reference implementation for ML platform engineering
 
 ## System Guarantees
 
-The platform enforces the following guarantees by construction:
+The platform enforces the following invariants:
 
-- Reproducible training
-  Every training run is tracked, versioned, and immutable.
+- Reproducible runs  
+  Every training run logs dataset fingerprint, config hash, git SHA, and is immutable.
 
-- Quality-gated releases
-  Models are only registered and promoted when evaluation criteria are met.
+- Quality-gated promotion  
+  `candidate → prod` promotion only happens when evaluation gates pass and all required metadata is present.
 
-- Alias-based release workflow
-  Models move through aliases rather than deprecated MLflow stages.
+- Alias-first registry model  
+  Deployment is driven by MLflow aliases (`candidate`, `prod`, `champion`). Stages are not used.
 
-- Deterministic rollback
-  Each promotion records the previous production version.
+- Deterministic rollback  
+  Each promotion records `previous_prod_version`. Rollback is a based on alias mutation.
 
-- Artifact lineage
-  Every model version links back to its source run and metadata.
+- Artifact lineage  
+  Every model version links to its source training run and metadata.
 
-- Separation of concerns
-  Training and serving are decoupled.
+- Control-plane / data-plane separation  
+  Training, registry policy, and serving are independent.
 
-- End-to-end automation
-  The full lifecycle is executable via Make targets.
-
-- Verifiable production
-  Smoke and E2E tests validate deployments.
+- End-to-end verifiability  
+  CI and E2E validate training, policy checks, promotion, serving, and rollback.
 
 ---
 
 ## Release Model (Alias-Based)
 
-MLflow stages are intentionally not used.
+MLflow stages are not used.
 
 ### Aliases
 
@@ -73,10 +70,39 @@ Required metadata:
 
 Promotion is blocked if any tag is missing.
 
+### Policy Check (Non-Mutating)
+
+Promotion can be executed in dry-run mode.
+
+- Evaluates metadata requirements
+- Verifies evaluation gate status
+- Returns a structured JSON decision report
+- Performs no registry writes or state changes
+
+Example:
+
+```bash
+make policy-check
+```
+
+The output contract:
+
+```json
+{
+  "allowed": true|false,
+  "context": {},
+  "errors": [],
+  "warnings": []
+}
+```
+
+CI and E2E rely on this contract.
+
 ### Rollback Metadata
 
+```
 previous_prod_version=<version>
-
+```
 ---
 
 ## Architecture Overview
@@ -103,12 +129,35 @@ previous_prod_version=<version>
 - Shadow traffic duplicator
 
 ### Lifecycle
-
+```
 Ingest → Featurize → Train → Evaluate → Register → Promote → Serve
-
+```
 Serving Path:
-
+```
 models:/<name>@prod → FastAPI → Clients
+```
+
+### Execution Flow
+
+```
+Train/Evaluate (project/)
+        |
+        v
+MLflow Registry (PostgreSQL backend)
+        |
+        |-- aliases: candidate / prod / champion
+        |
+        v
+Serving (FastAPI)
+        |
+        |-- prod (default)
+        |-- candidate (optional)
+        |-- canary (bucketed routing)
+        |-- shadow (mirrored inference)
+        |
+        v
+Clients
+```
 
 ---
 
@@ -123,7 +172,24 @@ models:/<name>@prod → FastAPI → Clients
 
 ---
 
+## Interface Contracts
+
+### Registry Contract
+- Deployment is alias-driven.
+- Serving resolves `models:/<name>@prod` by default.
+
+### Promotion Contract
+- Required tags: `dataset_fingerprint`, `git_sha`, `config_hash`, `training_run_id`
+- Dry-run mode outputs `{allowed, context, errors, warnings}`
+
+### Rollback Contract
+- Rollback mutates aliases only.
+- No rebuild or retraining required.
+
+---
+
 ## Repository Structure
+
 ```bash
 .
 ├── project/      # Training, evaluation, promotion
@@ -135,49 +201,17 @@ models:/<name>@prod → FastAPI → Clients
 
 ---
 
-## Quickstart (Local)
-
-### Prerequisites
-
-- Docker
-- Docker Compose
-- GNU Make
-- Python 3.11+
-
-### Start Infrastructure
+## Local Execution 
 
 ```bash
-make up
+make down && make clean && make up && make run-pipeline && make policy-check && make promote && make serve && make smoke-test && make e2e
 ```
 
 Service Endpoints:
 
 - MLflow UI: http://localhost:5050
 - MinIO Console: http://localhost:9001
-
-### Run Training Pipeline
-
-```bash
-make run-pipeline
-```
-
-### Promote Model
-
-```bash
-make promote
-```
-
-### Start Serving
-
-```bash
-make serve
-```
-
-### Verify Deployment
-
-```bash
-make smoke-test
-```
+- Serving API: http://localhost:8000
 
 ---
 
@@ -206,20 +240,16 @@ make rollback-prod
 POST /predict?mode=prod|candidate|canary|shadow
 ```
 
-### Mode Semantics
+### Routing Modes
 
-| Mode      | Behavior                               |
-|-----------|----------------------------------------|
-| prod      | Default production model               |
-| candidate | Staging model                          |
-| canary    | Partial traffic to new model           |
-| shadow    | Mirrored traffic (no user impact)      |
+| Mode      | Behavior                                                                 |
+|-----------|--------------------------------------------------------------------------|
+| prod      | Resolves `@prod` (default production alias)                              |
+| candidate | Resolves `@candidate` if available; otherwise returns 503                |
+| canary    | Deterministic traffic split between prod and candidate                   |
+| shadow    | Executes candidate in parallel; response derived from prod               |
 
-### Canary Configuration
-
-```bash
-export CANARY_PCT=10
-```
+Canary routing is deterministic per request (bucketed by payload hash).
 
 ---
 
@@ -227,38 +257,30 @@ export CANARY_PCT=10
 
 ### Promotion Failures
 
-- Missing metadata → promotion blocked
-- Metric regression → candidate rejected
+- Missing required metadata → promotion blocked
+- Evaluation gate failed → candidate rejected
 
 ### Serving Failures
 
-- Registry unavailable → fallback to last prod
-- Canary instability → automatic rollback
+- Alias resolution failure → HTTP 503
+- Registry connectivity issues → HTTP 503
 
 ### Recovery
+
+Rollback is explicit and deterministic:
 
 ```bash
 make rollback-prod
 ```
+
 ---
+
 ## Local Development
 
 ```bash
 make check
 make fix
 ```
----
-
-## Governance & Contribution
-
-- Code ownership via CODEOWNERS
-- Mandatory pull requests
-- Standard PR templates
-- CI enforcement
-
-See:
-- CONTRIBUTING.md
-- CODEOWNERS
 
 ---
 
@@ -280,25 +302,6 @@ This project follows Conventional Commits.
 - Automated changelogs
 - Semantic versioning
 - Release Please automation
-
----
-
-## Operational Workflow
-
-```bash
-make up
-make run-pipeline
-make promote
-make serve
-make smoke-test
-make e2e
-```
-
----
-
-## Status
-
-Reference-grade ML platform implementation.
 
 ---
 
