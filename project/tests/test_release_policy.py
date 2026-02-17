@@ -38,7 +38,9 @@ class MlflowClientStub:
         self.set_model_version_tag_calls: list[tuple[Any, ...]] = []
 
     def put_version(self, model_name: str, version: str, tags: dict[str, str]) -> None:
-        self._versions[(model_name, version)] = _ModelVersion(version=version, tags=tags)
+        self._versions[(model_name, version)] = _ModelVersion(
+            version=version, tags=tags
+        )
 
     def set_alias(self, model_name: str, alias: str, version: str) -> None:
         self._aliases[(model_name, alias)] = version
@@ -76,7 +78,9 @@ def _valid_candidate_tags() -> dict[str, str]:
 
 def test_policy_blocks_when_candidate_alias_missing():
     client = MlflowClientStub()
-    decision = evaluate_promotion_policy(client, model_name="m", from_alias=ALIAS_CANDIDATE, to_alias=ALIAS_PROD)
+    decision = evaluate_promotion_policy(
+        client, model_name="m", from_alias=ALIAS_CANDIDATE, to_alias=ALIAS_PROD
+    )
     assert decision.allowed is False
     assert any(v.code == "MISSING_ALIAS" for v in decision.errors)
 
@@ -141,6 +145,7 @@ def test_dry_run_mode_has_zero_mutations(monkeypatch):
 
     # Patch MlflowClient used in src.promote to our stub instance
     import src.promote as promote_mod
+
     monkeypatch.setattr(promote_mod, "MlflowClient", lambda: client)
 
     # Run promote in dry-run mode: must exit 0 and must not mutate

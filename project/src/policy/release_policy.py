@@ -108,7 +108,10 @@ def evaluate_promotion_policy(
             )
         )
         return PolicyDecision(
-            allowed=False, errors=tuple(errors), warnings=tuple(warnings), context=context
+            allowed=False,
+            errors=tuple(errors),
+            warnings=tuple(warnings),
+            context=context,
         )
 
     # Load candidate model version

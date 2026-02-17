@@ -104,11 +104,17 @@ def apply_promotion(
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Promote candidate model to prod with policy gating.")
+    p = argparse.ArgumentParser(
+        description="Promote candidate model to prod with policy gating."
+    )
     p.add_argument("--model-name", default=get_model_name())
     p.add_argument("--from-alias", default=ALIAS_CANDIDATE)
     p.add_argument("--to-alias", default=ALIAS_PROD)
-    p.add_argument("--dry-run", action="store_true", help="Evaluate policy only; do not mutate registry.")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Evaluate policy only; do not mutate registry.",
+    )
     p.add_argument("--format", choices=["json", "text"], default="json")
     return p.parse_args(argv)
 
