@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Backwards-compatible import path.
 # New canonical location: src.contracts.dataset_fingerprint
-
 from src.contracts.dataset_fingerprint import (  # noqa: F401
     DatasetFingerprint,
     compute_fingerprint,

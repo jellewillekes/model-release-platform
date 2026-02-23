@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-
 from src.common.constants import (
     ALIAS_CANDIDATE,
     ALIAS_PROD,

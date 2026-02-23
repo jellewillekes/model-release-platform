@@ -4,17 +4,18 @@ import hashlib
 import json
 import os
 import subprocess
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any
 
 import pandas as pd
 
 from src.common.constants import (
     DATASET_FINGERPRINT_SCHEMA_VERSION,
+    TAG_DATA_SOURCE_URI,
     TAG_DATASET_CONTENT_HASH,
     TAG_DATASET_SCHEMA_HASH,
-    TAG_DATA_SOURCE_URI,
     TAG_GIT_SHA,
     TAG_ROW_COUNT,
 )
@@ -54,7 +55,7 @@ class DatasetFingerprint:
         return json.dumps(self.to_dict(), indent=2, sort_keys=True)
 
     @staticmethod
-    def from_dict(payload: Mapping[str, Any]) -> "DatasetFingerprint":
+    def from_dict(payload: Mapping[str, Any]) -> DatasetFingerprint:
         schema_version = str(payload.get("schema_version", ""))
         if schema_version != DATASET_FINGERPRINT_SCHEMA_VERSION:
             raise ValueError(
@@ -70,7 +71,7 @@ class DatasetFingerprint:
         )
 
     @staticmethod
-    def from_json(payload: str) -> "DatasetFingerprint":
+    def from_json(payload: str) -> DatasetFingerprint:
         return DatasetFingerprint.from_dict(json.loads(payload))
 
 
@@ -106,9 +107,7 @@ def schema_hash(df: pd.DataFrame) -> str:
     return _sha256_bytes(payload)
 
 
-def content_hash(
-    df: pd.DataFrame, *, index_cols: Optional[Sequence[str]] = None
-) -> str:
+def content_hash(df: pd.DataFrame, *, index_cols: Sequence[str] | None = None) -> str:
     """Hash dataset content in a deterministic way."""
     df2 = df.copy()
     df2 = df2.reindex(sorted(df2.columns), axis=1)
@@ -128,7 +127,7 @@ def compute_fingerprint(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
     data_source_uri: str,
-    index_cols: Optional[Sequence[str]] = None,
+    index_cols: Sequence[str] | None = None,
 ) -> DatasetFingerprint:
     """Fingerprint over training+test membership."""
     combined = pd.concat([train_df, test_df], axis=0, ignore_index=True)

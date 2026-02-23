@@ -14,11 +14,11 @@ from src.common.constants import (
     ART_PREPROCESSOR,
     LABEL_COL,
     RAW_CSV,
-    TEST_CSV,
-    TRAIN_CSV,
     STEP_FEATURIZE,
     TAG_MODEL_NAME,
     TAG_STEP,
+    TEST_CSV,
+    TRAIN_CSV,
 )
 from src.common.mlflow_utils import ensure_experiment
 

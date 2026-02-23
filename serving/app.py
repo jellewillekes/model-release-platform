@@ -5,14 +5,14 @@ import logging
 import math
 import time
 import uuid
-from collections.abc import Awaitable, Callable, AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any, Literal, cast
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, Field
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from pydantic import BaseModel, Field
 from starlette.responses import Response
 
 try:

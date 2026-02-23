@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from src.common.constants import MODEL_REF_SCHEMA_VERSION
 
@@ -12,9 +13,9 @@ class ModelRef:
     """Reference to a model in the registry or a specific run artifact."""
 
     model_name: str
-    alias: Optional[str] = None
-    version: Optional[str] = None
-    source_run_id: Optional[str] = None
+    alias: str | None = None
+    version: str | None = None
+    source_run_id: str | None = None
     schema_version: str = MODEL_REF_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
@@ -30,7 +31,7 @@ class ModelRef:
         return json.dumps(self.to_dict(), indent=2, sort_keys=True)
 
     @staticmethod
-    def from_dict(payload: Mapping[str, Any]) -> "ModelRef":
+    def from_dict(payload: Mapping[str, Any]) -> ModelRef:
         schema_version = str(payload.get("schema_version", ""))
         if schema_version != MODEL_REF_SCHEMA_VERSION:
             raise ValueError(
@@ -57,5 +58,5 @@ class ModelRef:
         )
 
     @staticmethod
-    def from_json(payload: str) -> "ModelRef":
+    def from_json(payload: str) -> ModelRef:
         return ModelRef.from_dict(json.loads(payload))

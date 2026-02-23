@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from src.common.constants import FEATURE_STATS_SCHEMA_VERSION
 
@@ -21,7 +22,7 @@ class FeatureStats:
         return json.dumps(self.to_dict(), indent=2, sort_keys=True)
 
     @staticmethod
-    def from_dict(payload: Mapping[str, Any]) -> "FeatureStats":
+    def from_dict(payload: Mapping[str, Any]) -> FeatureStats:
         schema_version = str(payload.get("schema_version", ""))
         if schema_version != FEATURE_STATS_SCHEMA_VERSION:
             raise ValueError(
@@ -34,5 +35,5 @@ class FeatureStats:
         return FeatureStats(stats={str(k): dict(v) for k, v in raw.items()})  # type: ignore[arg-type]
 
     @staticmethod
-    def from_json(payload: str) -> "FeatureStats":
+    def from_json(payload: str) -> FeatureStats:
         return FeatureStats.from_dict(json.loads(payload))

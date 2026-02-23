@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
 from _pytest.monkeypatch import MonkeyPatch
+from fastapi.testclient import TestClient
 
 import serving.app as appmod
 
